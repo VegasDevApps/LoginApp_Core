@@ -23,11 +23,12 @@ namespace API.Controllers
         }
 
         [HttpGet, Authorize]
-        public ActionResult<string> GetMe(){
-            
+        public ActionResult<string> GetMe()
+        {
+
             var username = _userService.GetMyName();
             return Ok(username);
-            
+
             // var username = User.Identity.Name;
             // var username2 = User.FindFirstValue(ClaimTypes.Name);
             // var role = User.FindFirstValue(ClaimTypes.Role);
@@ -48,19 +49,67 @@ namespace API.Controllers
         [HttpPost("login")]
         public async Task<ActionResult<string>> Login(UserDto request)
         {
-            if(user.Username.ToLower() != request.Username.ToLower())
+            if (user.Username.ToLower() != request.Username.ToLower())
             {
                 return BadRequest("User not found");
             }
 
-            if(!VerifyPasswordHash(request.Password, user.PasswordHash, user.PasswordSalt))
+            if (!VerifyPasswordHash(request.Password, user.PasswordHash, user.PasswordSalt))
             {
                 return BadRequest("User not found"); // Wrong Password
             }
 
             string token = CreateToken(user);
 
+            var refreshToken = GenerateRefreshToken();
+            SetRefreshToken(refreshToken);
+
             return Ok(token);
+        }
+
+        [HttpPost("refresh-token")]
+        public async Task<ActionResult<string>> RefreshToken()
+        {
+            var refreshToken = Request.Cookies["refreshToken"];
+
+            if(!user.RefreshToken.Equals(refreshToken))
+            {
+                return Unauthorized("Invalid refresh token");
+            }
+            else if(user.TokenExpaires < DateTime.Now)
+            {
+                return Unauthorized("Token expaired!");
+            }
+
+            string token = CreateToken(user);
+            var newRefreshToken = GenerateRefreshToken();
+            SetRefreshToken(newRefreshToken);
+
+            return Ok(token);
+        }
+
+        private void SetRefreshToken(RefreshToken refreshToken)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Expires = refreshToken.Expires
+            };
+
+            Response.Cookies.Append("refreshToken", refreshToken.Token, cookieOptions);
+            user.RefreshToken = refreshToken.Token;
+            user.TokenCreated = refreshToken.Created;
+            user.TokenExpaires = refreshToken.Expires;
+        }
+
+        private RefreshToken GenerateRefreshToken()
+        {
+            return new RefreshToken
+            {
+                Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                Expires = DateTime.Now.AddDays(7),
+                Created = DateTime.Now
+            };
         }
 
         private string CreateToken(User user)
@@ -72,7 +121,7 @@ namespace API.Controllers
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration.GetSection("AppSettings:Token").Value));
-            
+
             var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
             var token = new JwtSecurityToken(
                 claims: claims,
