@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 
@@ -11,15 +12,27 @@ namespace API.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
+        public static User user = new User();
         private readonly IConfiguration _configuration;
+        private readonly IUserService _userService;
 
-        public AuthController(IConfiguration configuration)
+        public AuthController(IConfiguration configuration, IUserService userService)
         {
+            _userService = userService;
             _configuration = configuration;
-            
         }
 
-        public static User user = new User();
+        [HttpGet, Authorize]
+        public ActionResult<string> GetMe(){
+            
+            var username = _userService.GetMyName();
+            return Ok(username);
+            
+            // var username = User.Identity.Name;
+            // var username2 = User.FindFirstValue(ClaimTypes.Name);
+            // var role = User.FindFirstValue(ClaimTypes.Role);
+            // return Ok(new {username, username2, role});
+        }
 
         [HttpPost("register")]
         public async Task<ActionResult<User>> Register(UserDto request)
